@@ -1,0 +1,92 @@
+name: phongent iOS Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phongent-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    name: Build unsigned iOS IPA
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate --spec ios/project.yml
+          test -d ios/MikaRemote.xcodeproj
+
+      - name: Show build schemes
+        run: |
+          xcodebuild -list -project ios/MikaRemote.xcodeproj
+
+      - name: Build for physical iOS devices without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/MikaRemote.xcodeproj \
+            -scheme MikaRemote \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            clean build
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/MikaRemote.app"
+          OUTPUT="$GITHUB_WORKSPACE/phongent-unsigned.ipa"
+          STAGING="$RUNNER_TEMP/ipa"
+
+          if [ ! -d "$APP" ]; then
+            echo "::error::MikaRemote.app was not produced"
+            find "$RUNNER_TEMP/DerivedData/Build/Products" -maxdepth 4 -print || true
+            exit 1
+          fi
+
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING/Payload"
+          ditto "$APP" "$STAGING/Payload/MikaRemote.app"
+
+          cd "$STAGING"
+          /usr/bin/zip -qry "$OUTPUT" Payload
+
+          test -s "$OUTPUT"
+          echo "Created unsigned IPA:"
+          ls -lh "$OUTPUT"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: phongent-unsigned-IPA
+          path: phongent-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
