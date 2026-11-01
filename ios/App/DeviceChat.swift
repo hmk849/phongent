@@ -245,7 +245,6 @@ private struct AgentComposerGlass:ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content:Content)->some View {
         if reduceTransparency {content.background(Color(uiColor:.secondarySystemBackground),in:RoundedRectangle(cornerRadius:28))}
-        else if #available(iOS 26.0,*) {content.background {RoundedRectangle(cornerRadius:28).fill(.clear).glassEffect(.regular.tint(.mint.opacity(0.06)),in:RoundedRectangle(cornerRadius:28)).allowsHitTesting(false)}}
         else {content.background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:28))}
     }
 }
